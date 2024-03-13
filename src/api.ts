@@ -38,7 +38,6 @@ const queryParamValidators = (): ValidationChain[] =>
             .default('asc')
             .isIn(['asc', 'desc']),
         query('filters')
-            .isJSON()
             .optional()
     ];
 
@@ -48,25 +47,28 @@ app.get('/:formId/filteredResponses', queryParamValidators(), (req: Request, res
     if (!validated.isEmpty()) return res.status(404).json({ message: 'Invalid Query Parameters' });
 
     const { filters = null, ...filloutParams } = matchedData(req);
-   
     filloutApi.get(
         `/api/forms/${formId}/submissions`,
         { params: filloutParams }
     )
         .then(({ data }) => {
             try {
-                const filteredResponses = filterResponse(data.responses, filtersToMap(filters));
+                if (!filters) {
+                    res.json(data);
+                }
+
+                const filteredResponses = filterResponse(data.responses, filtersToMap(JSON.parse(filters)));
                 res.json({
                     responses: filteredResponses,
                     totalResponses: filteredResponses.length,
                     pageCount: Math.ceil(filteredResponses.length / filloutParams.limit)
-            });
-            } catch (error) {
-                res.status(400).json({message: error});
+                });
+            } catch (e) {
+                if (e instanceof InvalidFilterFormatError) {
+                    res.status(400).json({ message: e.message });
+                }
+                throw e;
             }
-        })
-        .catch(error => {
-            return res.status(400).json({ message: 'Error while calling Fillout API' });
         });
 
 });
